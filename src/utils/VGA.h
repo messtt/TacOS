@@ -1,5 +1,5 @@
-#ifndef __EOS_UTILS_VGA_H__
-    #define __EOS_UTILS_VGA_H__
+#ifndef __TOS_UTILS_VGA_H__
+    #define __TOS_UTILS_VGA_H__
 
 /**
  * @brief      This is the global API for the VGA driver.
@@ -9,6 +9,7 @@
 
     #include "VGA/clear.h"
     #include "VGA/print.h"
+    #include "VGA/config.h"
     #include "VGA/VGA_color_macros.h"
 
 #endif

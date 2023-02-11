@@ -9,7 +9,11 @@ RUN apt-get install -y make \
     nasm \
     lbzip2 \
     grub-common \
-    qemu
+    qemu \
+    xorriso \
+    grub-pc-bin \
+    grub-common \
+    binutils
 
 # Re-used environment variables
 ENV DIR="/osdev"

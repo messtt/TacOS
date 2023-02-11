@@ -1,98 +1,83 @@
-SRC				= ./src
-CONFIG			= ./config
-BIN				= ./bin
-ISO				= ./iso
-
-# Main folders path
-ENTRY			= $(SRC)/entry
-UTILS			= $(SRC)/utils
-BOOT			= $(SRC)/boot_sector
-INTERRUPTS		= $(SRC)/interrupts
-DRIVERS			= $(SRC)/drivers
-
-# Kernel needed file(s)
-KERNEL_BIN		= $(BIN)/kernel.bin
-KERNEL_BUILD	= $(BIN)/kernelfull.o
-OS_BIN			= $(ISO)/epi-os.iso
-
-# Compilation tools (compiler, linker, etc..)
-NASM			= nasm
 CC				= i686-elf-gcc
+NASM			= nasm
 LD				= i686-elf-ld
+QEMU 			= qemu-system-x86_64
+GRUB			= /usr/bin/grub-mkrescue
 
-# Boot sector
-BOOT_SRC		= $(BOOT)/boot_sector.asm
-BOOT_BIN		= $(BIN)/boot.bin
-BOOT_FLAGS		= -f bin
+SRC				= ./src
+ISO				= ./iso
+UTILS			= $(SRC)/utils
+DRIVERS			= $(SRC)/drivers
+BIOS			= $(DRIVERS)/bios
+GDT				= $(DRIVERS)/gdt
+IDT				= $(DRIVERS)/idt
+GUI				= $(DRIVERS)/vesa
+KEYBOARD		= $(DRIVERS)/keyboard
+PIC				= $(DRIVERS)/pic
+STRING_LIB		= $(UTILS)/string/libstring.a
+MEMORY_LIB		= $(UTILS)/memory/libmemory.a
 
-# Includes
+LIBS			= $(STRING_LIB) $(MEMORY_LIB)
 INCLUDES		= -I $(SRC) -I $(UTILS)
+C_FLAGS 		= -W -Wall -Wextra -ffreestanding -Werror $(INCLUDES)
+LD_FLAGS 		= -T config/linker.ld -nostdlib -m elf_i386
+ASM_FLAGS 		= -f elf32
+QEMU_FLAGS		= -d int -no-reboot
 
-# Flags
-ASM_FLAGS		= -f elf
-CFLAGS			= -g -ffreestanding $(INCLUDES) -W -Wall -Wextra -Werror
-LDFLAGS			= -Ttext 0x1000 --oformat binary
+C_SRC			= src/kernel.c \
+				$(GDT)/gdt.c \
+				$(BIOS)/32/bios32.c \
+				$(UTILS)/VGA/clear.c \
+				$(UTILS)/VGA/print.c \
+				$(IDT)/handler.c \
+				$(IDT)/idt.c \
+				$(IDT)/init.c \
+				$(PIC)/io.c \
+				$(PIC)/remap.c \
+				$(KEYBOARD)/init.c \
+				$(KEYBOARD)/handler.c \
+				$(GUI)/draw_square.c \
+				$(GUI)/init.c \
+				$(GUI)/put_pixel.c
 
-# Sources
-ASM_SRC			= $(ENTRY)/entry_point.asm \
-				$(DRIVERS)/idt/interrupts.asm
-C_SRC			= $(ENTRY)/kernel_entry.c \
-				  $(UTILS)/VGA/clear.c \
-				  $(UTILS)/VGA/print.c \
-				  $(UTILS)/string/revstr.c \
-				  $(UTILS)/string/itoa.c \
-				  $(UTILS)/string/strlen.c \
-				  $(DRIVERS)/idt/idt.c \
-				  $(DRIVERS)/idt/init.c \
-				  $(DRIVERS)/idt/handler.c \
-				  $(DRIVERS)/pic/remap.c \
-				  $(DRIVERS)/pic/io.c \
-				  $(DRIVERS)/keyboard/init.c \
-				  $(DRIVERS)/keyboard/handler.c
+ASM_SRC			= $(BIOS)/32/interrupts.asm \
+				$(SRC)/boot_sector.asm \
+				$(GDT)/load_gdt.asm \
+				$(IDT)/interrupts.asm
 
-# Objects
-C_OBJ			= $(C_SRC:.c=.o)
-ASM_OBJ			= $(ASM_SRC:.asm=.o)
-KERNEL_OBJS		= $(ASM_OBJ) $(C_OBJ)
+OBJ 			= $(C_SRC:.c=.o) $(ASM_SRC:.asm=.o)
+TARGET_BIN		= $(ISO)/TacOS.bin
+TARGET_ISO		= $(TARGET_BIN:.bin=.iso)
 
+all: deps build
 
-# Targets
-all: build
+deps:
+	make -C $(UTILS)/string
+	make -C $(UTILS)/memory
 
-build: boot_bin kernel_bin
-	dd if=$(BOOT_BIN) 					>> $(OS_BIN)
-	dd if=$(KERNEL_BIN) 				>> $(OS_BIN)
-	dd if=/dev/zero bs=1048576 count=16 >> $(OS_BIN)
+build: $(OBJ)
+	$(LD) $(LD_FLAGS) -o $(TARGET_BIN) $(OBJ) $(LIBS)
+	$(GRUB) -o $(TARGET_ISO) .
 
-# Compile and launch QEMU
 run:
-	qemu-system-x86_64 -d int -no-reboot $(OS_BIN)
-
-build_and_run: build run
-
-boot_bin:
-	$(NASM) $(BOOT_FLAGS) $(BOOT_SRC) -o $(BOOT_BIN)
-
-kernel_bin: $(KERNEL_OBJS)
-	$(LD) $(LDFLAGS) $(KERNEL_OBJS) -o $(KERNEL_BIN)
+	$(QEMU) $(QEMU_FLAGS) $(TARGET_ISO)
 
 clean:
-	$(RM) $(C_OBJ)
-	$(RM) $(ASM_OBJ)
-	$(RM) $(KERNEL_BIN)
-	$(RM) $(BOOT_BIN)
-	$(RM) $(KERNEL_BUILD)
+	make -C $(UTILS)/string clean
+	make -C $(UTILS)/memory clean
+	$(RM) $(OBJ)
 
 fclean: clean
-	$(RM) $(OS_BIN)
+	make -C $(UTILS)/string fclean
+	make -C $(UTILS)/memory fclean
+	$(RM) $(TARGET_BIN)
+	$(RM) $(TARGET_ISO)
 
 re: fclean all
 
-# Compilations rules
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) -c $(C_FLAGS) -o $@ $<
 
 %.o: %.asm
-	$(NASM) $(ASM_FLAGS) $< -o $@
+	$(NASM) $(ASM_FLAGS) -o $@ $<
 
-.PHONY: build run build_and_run boot_bin kernel_bin clean fclean re
